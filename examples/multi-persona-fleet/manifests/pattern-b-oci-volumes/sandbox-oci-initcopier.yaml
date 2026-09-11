@@ -21,23 +21,11 @@ spec:
         fsGroup: 1000
       initContainers:
       - name: copy-skills-catalog
-        # Minimal image packaging the entire skill & persona catalog
-        image: gcr.io/fbongiovanni-gke-dev/agent-skills-catalog:latest
+        # Minimal distroless static binary packaging the entire skill & persona catalog
+        image: gcr.io/fbongiovanni-gke-dev/agent-skills-catalog:1789164574
         imagePullPolicy: IfNotPresent
-        command: ["/bin/sh", "-c"]
-        args:
-        - |
-          echo "Syncing skills for persona: ${PERSONA_NAME}"
-          mkdir -p /opt/data/skills/custom
-          # Copy persona definition
-          if [ -f "/catalog/personas/${PERSONA_NAME}.md" ]; then
-            cp "/catalog/personas/${PERSONA_NAME}.md" /opt/data/persona.md
-          fi
-          # Copy persona-specific skills
-          if [ -d "/catalog/skills/sre" ]; then
-            cp -r /catalog/skills/sre/* /opt/data/skills/custom/
-          fi
-          echo "Skill synchronization complete."
+        command: ["/skill-loader"]
+        args: ["-catalog", "/catalog", "-dest", "/opt/data"]
         env:
         - name: PERSONA_NAME
           valueFrom:

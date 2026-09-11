@@ -3,7 +3,8 @@ FROM golang:1.23-alpine AS builder
 
 WORKDIR /build
 
-COPY main.go .
+COPY cmd/skill-loader/go.mod* ./
+COPY cmd/skill-loader/main.go .
 
 # Build a statically linked binary with no CGO dependencies
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags="-w -s" -o skill-loader .

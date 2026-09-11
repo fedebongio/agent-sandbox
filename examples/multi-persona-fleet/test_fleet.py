@@ -155,5 +155,45 @@ class TestMultiPersonaFleet(unittest.TestCase):
             text = dispatcher.load_persona(persona_name)
             self.assertIn("Strictly Read-Only", text)
 
+    def test_fleet_dispatcher_payload_builder(self):
+        dispatcher_path = FLEET_DIR / "scripts" / "fleet_dispatcher.py"
+        spec = importlib.util.spec_from_file_location("fleet_dispatcher", dispatcher_path)
+        dispatcher = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(dispatcher)
+
+        payload = dispatcher.build_dispatch_payload("test-sandbox", "sre-observer", "Audit crash loops", model="hermes-agent")
+        self.assertEqual(payload["model"], "hermes-agent")
+        self.assertEqual(len(payload["messages"]), 2)
+        self.assertEqual(payload["messages"][0]["role"], "system")
+        self.assertEqual(payload["messages"][1]["role"], "user")
+        self.assertEqual(payload["messages"][1]["content"], "Audit crash loops")
+        self.assertTrue(payload["metadata"]["jit_injected"])
+        self.assertEqual(payload["metadata"]["sandbox"], "test-sandbox")
+
+    def test_fleet_dispatcher_find_idle_dry_run(self):
+        dispatcher_path = FLEET_DIR / "scripts" / "fleet_dispatcher.py"
+        spec = importlib.util.spec_from_file_location("fleet_dispatcher", dispatcher_path)
+        dispatcher = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(dispatcher)
+
+        mock_idle = dispatcher.find_idle_sandbox("generic-warm-pool", dry_run=True)
+        self.assertIn("agent-sandbox-warm-1", mock_idle)
+
+    def test_initcopier_uses_skill_loader(self):
+        initcopier_file = FLEET_DIR / "manifests" / "pattern-b-oci-volumes" / "sandbox-oci-initcopier.yaml"
+        content = initcopier_file.read_text(encoding="utf-8")
+        self.assertIn("/skill-loader", content, "Distroless container must invoke /skill-loader static binary")
+        self.assertNotIn("/bin/sh", content, "Distroless static image does not contain /bin/sh")
+
+    def test_skill_loader_source_and_go_mod(self):
+        cmd_dir = FLEET_DIR / "cmd" / "skill-loader"
+        self.assertTrue((cmd_dir / "main.go").exists())
+        self.assertTrue((cmd_dir / "Dockerfile").exists())
+        self.assertTrue((cmd_dir / "go.mod").exists())
+        
+        dockerfile_content = (cmd_dir / "Dockerfile").read_text(encoding="utf-8")
+        self.assertIn("gcr.io/distroless/static", dockerfile_content)
+        self.assertIn("CGO_ENABLED=0", dockerfile_content)
+
 if __name__ == "__main__":
     unittest.main()

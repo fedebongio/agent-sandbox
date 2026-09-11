@@ -2,32 +2,32 @@
 
 This example demonstrates how to run a **large fleet of concurrent agent sandboxes** using the Kubernetes [agent-sandbox](https://github.com/kubernetes-sigs/agent-sandbox) primitive (`agents.x-k8s.io/v1beta1`), maintaining **warm pools of sandboxes** and dynamically injecting **different personas and skills** across instances **without restarting pods or rebuilding container images**.
 
-The goal here is **not** prompt-engineering complex personas, but rather exemplifying the **operational architecture** of running fleets of autonomous sandboxes:
+Rather than focusing on prompt engineering, this example exemplifies the **operational architecture** of running fleets of autonomous sandboxes in production:
 * **Warm Pooling & Just-In-Time (JIT) Persona Injection**: Avoid cold-start pod creation latency by dynamically dispatching personas to running, pre-warmed sandboxes.
-* **Massive Concurrency**: Running dozens or hundreds of parallel sandbox instances.
-* **Scalability at Fleet Scale**: Mitigating etcd bottlenecks by comparing ConfigMaps against native OCI Image Volumes.
-* **Lifecycle & Resource Efficiency**: Leveraging `operatingMode: Suspended` to pause standby sandboxes without deleting persistent memory.
+* **Massive Concurrency**: Managing dozens or hundreds of parallel sandbox instances efficiently.
+* **Scalability at Fleet Scale**: Mitigating etcd bottlenecks by contrasting ConfigMaps against native OCI Image Volumes.
+* **Lifecycle & Resource Efficiency**: Leveraging `operatingMode: Suspended` to pause standby sandboxes without deleting persistent state.
 * **Runtime Parity**: Working configurations for both **Hermes Agent** and **OpenClaw**.
 
 ---
 
 ## 1. Warm Pool Architectures
 
-Cold-starting an agent sandbox in Kubernetes requires pod scheduling, container image pulling, runtime initialization, and establishing model connections (often 10–30+ seconds). Warm pooling eliminates this delay.
+Cold-starting an agent sandbox in Kubernetes requires pod scheduling, image pulling, runtime boot, and establishing LLM client connections (often 10–30+ seconds). Warm pooling eliminates this delay.
 
 ```
                   ┌──────────────────────────────────────────────┐
                   │          Fleet Dispatcher / Queue            │
                   │ (Task: "Run CVE audit" -> security-auditor)  │
                   └──────────────────────┬───────────────────────┘
-                                         │ Claim Idle Sandbox
+                                         │ 1. Claim Idle Sandbox
                                          ▼
                  ┌─────────────────────────────────────────────────┐
                  │          Generic Warm Pool (Running)            │
                  │   [Sandbox-1 (busy)]    [Sandbox-2 (idle)]      │
                  └───────────────┬─────────────────────────────────┘
-                                 │ JIT Persona & Skill Injection
-                                 │ (HTTP Gateway API: /chat)
+                                 │ 2. JIT Persona & Skill Injection
+                                 │    (HTTP Gateway API: /v1/chat/completions)
                                  ▼
                      ┌───────────────────────────┐
                      │ Hermes / OpenClaw Gateway │
@@ -37,16 +37,14 @@ Cold-starting an agent sandbox in Kubernetes requires pod scheduling, container 
                      └───────────────────────────┘
 ```
 
-There are two primary warm pool topologies:
-
-### Topology A: Generic Warm Pool with Just-In-Time (JIT) Injection (Recommended)
+### Topology A: Generic Warm Pool with JIT Injection (Recommended)
 * **How it works**: A pool of generic `Sandbox` instances runs in `operatingMode: Running` with access to a shared catalog (mounted via an OCI volume or ConfigMap).
 * **Dispatch**: When an incident or task arrives, the dispatcher:
   1. Finds an idle sandbox (`agent.x-k8s.io/status=idle`).
   2. Marks it `status=busy` with the active persona.
-  3. Injects the persona system instructions and target skills via the Hermes/OpenClaw Gateway API (`POST /chat` on `:8642`).
-  4. Releases the sandbox back to `idle` upon completion.
-* **Benefits**: Maximum flexibility; any warm sandbox can handle any persona instantly.
+  3. Injects the persona system prompt and task instructions via the OpenAI-compatible Gateway API (`POST /v1/chat/completions` on port `:8642`).
+  4. Releases the sandbox back to `idle` upon task completion.
+* **Benefits**: Maximum resource efficiency; any warm sandbox can handle any persona instantly.
 * **Manifest**: [`manifests/warm-pool/sandbox-generic-warm-pool.yaml`](manifests/warm-pool/sandbox-generic-warm-pool.yaml)
 * **Reference Dispatcher**: [`scripts/fleet_dispatcher.py`](scripts/fleet_dispatcher.py)
 
@@ -58,11 +56,11 @@ There are two primary warm pool topologies:
 
 ---
 
-## 2. Scalability Analysis: ConfigMaps vs. OCI Image Volumes
+## 2. Injecting Personas & Skills: Beyond ConfigMaps
 
-When running a large number of sandboxes, how you deliver personas and skills directly impacts cluster stability:
+When running at fleet scale, how you deliver personas and skills directly impacts cluster stability:
 
-| Scalability Dimension | **Pattern A: ConfigMaps & Volume Projections** | **Pattern B: High-Scale OCI Image Volumes** |
+| Dimension | **Pattern A: ConfigMaps & Volume Projections** | **Pattern B: High-Scale OCI Image Volumes** |
 | :--- | :--- | :--- |
 | **Fleet Scale** | 1 – 50 sandboxes (prototyping, small dev clusters) | 100 – 1,000+ sandboxes (enterprise fleet) |
 | **Size Limit** | **1 MiB hard ceiling** in etcd | **Gigabyte-scale** (can bundle diagnostics, toolchains, datasets) |
@@ -73,7 +71,13 @@ When running a large number of sandboxes, how you deliver personas and skills di
 
 > [!WARNING]
 > **Why ConfigMaps fail at fleet scale**:
-> In large Kubernetes clusters, mounting ConfigMaps into hundreds of concurrent sandboxes can severely degrade the control plane. etcd writes for large ConfigMaps increase latency, and thousands of kubelet watches stress the API server. If skills change frequently or include rich procedural datasets, always use **Pattern B (OCI Image Volumes)**.
+> In large Kubernetes clusters, mounting ConfigMaps into hundreds of concurrent sandboxes can degrade the control plane. Large ConfigMaps increase etcd latency, and thousands of kubelet watches stress the API server. If skills change frequently or include rich procedural datasets, always use **Pattern B (OCI Image Volumes)**.
+
+### The Production Pairing
+In production warm pools, combine both mechanisms:
+1. **OCI Image Volumes (`volumes[].image`)**: Deliver the **heavy, immutable skill catalog and CLI toolchains** into `/opt/skills-catalog`. The layers are pulled once per node and cached by containerd.
+2. **Just-In-Time (JIT) Gateway API**: Injects the **lightweight persona system instructions and goal prompt** dynamically into the warm sandbox at request time.
+3. **Clean Session Boundary**: When the HTTP completion finishes, the persona context terminates with the session, leaving the warm sandbox clean and ready for the next task.
 
 ---
 
@@ -85,7 +89,7 @@ Both agent engines run as stock container images inside the `Sandbox` CR without
 | :--- | :--- | :--- |
 | **Container Image** | `nousresearch/hermes-agent:latest` | `ghcr.io/openclaw/openclaw:latest` |
 | **Skill Discovery** | `$HERMES_HOME/skills/custom/<name>/SKILL.md` (YAML frontmatter + markdown procedure) | `/workspace/skills/<name>/SKILL.md` or tools configured in `openclaw.json` |
-| **JIT Persona Injection** | Hermes Gateway HTTP API (`:8642/chat`) or `$HERMES_HOME/persona.md` | Configured via `/workspace/persona.md` and referenced in `openclaw.json` |
+| **JIT Persona Injection** | Hermes Gateway HTTP API (`:8642/v1/chat/completions`) or `$HERMES_HOME/persona.md` | Configured via `/workspace/persona.md` and referenced in `openclaw.json` |
 | **Manifests** | [`manifests/warm-pool/sandbox-generic-warm-pool.yaml`](manifests/warm-pool/sandbox-generic-warm-pool.yaml) | [`manifests/openclaw/sandbox-openclaw.yaml`](manifests/openclaw/sandbox-openclaw.yaml) |
 
 ---
@@ -127,6 +131,7 @@ examples/multi-persona-fleet/
 │   │   ├── sandbox-security.yaml
 │   │   └── sandbox-finops.yaml
 │   ├── pattern-b-oci-volumes/               # High Scale: OCI Image Volumes
+│   │   ├── catalog-deployment.yaml          # Verification deployment for catalog container
 │   │   ├── sandbox-oci-imagevolume.yaml     # Native K8s 1.31+ ImageVolumeSource
 │   │   └── sandbox-oci-initcopier.yaml      # Universal Init Container Copier
 │   └── openclaw/                            # OpenClaw Sandbox manifests
@@ -135,11 +140,15 @@ examples/multi-persona-fleet/
 ├── cmd/
 │   └── skill-loader/                        # Static Go binary & distroless Dockerfile
 │       ├── main.go
+│       ├── main_test.go
+│       ├── go.mod
 │       └── Dockerfile
+├── test_fleet.py                            # Comprehensive Python unit test suite
 └── scripts/
     ├── fleet_dispatcher.py                  # Warm pool claiming & JIT injection dispatcher
     ├── validate_manifests.py                # Zero-dependency Python validation script
-    └── test_deploy_dryrun.sh                # End-to-end dry-run test suite
+    ├── test_deploy_dryrun.sh                # Manifest validation & dry-run test suite
+    └── run-test-fleet.sh                    # End-to-end cluster lifecycle test
 ```
 
 ---
@@ -153,11 +162,14 @@ python3 examples/multi-persona-fleet/scripts/fleet_dispatcher.py --persona sre-o
 
 # Claim a warm sandbox and inject the Security persona
 python3 examples/multi-persona-fleet/scripts/fleet_dispatcher.py --persona security-auditor
+
+# List all fleet sandboxes, pools, and operating modes
+python3 examples/multi-persona-fleet/scripts/fleet_dispatcher.py --list
 ```
 
 ### 2. Run Automated Unit Tests
 ```bash
-python3 -m unittest discover -s tests -p "test_*.py"
+python3 examples/multi-persona-fleet/test_fleet.py
 ```
 
 ### 3. Run the Full Dry-Run & Validation Suite
@@ -169,17 +181,36 @@ python3 -m unittest discover -s tests -p "test_*.py"
 
 ## 7. Deploying to a Live Cluster
 
+### Step 1: Apply Least-Privilege RBAC
 ```bash
-# 1. Apply RBAC
 kubectl apply -f examples/multi-persona-fleet/manifests/rbac/
+```
 
-# 2. Deploy ConfigMaps & Skills Catalog
+### Step 2: Deploy ConfigMaps & Skills Catalog
+```bash
 kubectl apply -f examples/multi-persona-fleet/manifests/pattern-a-configmaps/configmaps-personas.yaml \
               -f examples/multi-persona-fleet/manifests/pattern-a-configmaps/configmaps-skills.yaml
+```
 
-# 3. Spin up the Generic Warm Pool
+### Step 3: Spin up the Generic Warm Pool
+```bash
 kubectl apply -f examples/multi-persona-fleet/manifests/warm-pool/sandbox-generic-warm-pool.yaml
+```
 
-# 4. Dispatch tasks live to the warm pool
+### Step 4: Dispatch Tasks Live to the Warm Pool
+```bash
+# Dispatch a task to the first available idle sandbox
 python3 examples/multi-persona-fleet/scripts/fleet_dispatcher.py --persona security-auditor --live
+
+# Explicitly suspend a standby sandbox for cost optimization
+python3 examples/multi-persona-fleet/scripts/fleet_dispatcher.py --suspend pool-finops-standby-0 --live
+
+# Resume a standby sandbox when batch work arrives
+python3 examples/multi-persona-fleet/scripts/fleet_dispatcher.py --resume pool-finops-standby-0 --live
+```
+
+### Step 5: Run the Automated End-to-End Cluster Test
+```bash
+# Automatically applies RBAC, boots a warm pool, dispatches personas, and verifies ready status
+./examples/multi-persona-fleet/scripts/run-test-fleet.sh --cleanup
 ```

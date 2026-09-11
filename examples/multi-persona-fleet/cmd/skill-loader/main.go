@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -53,8 +54,22 @@ func main() {
 		persona     = flag.String("persona", "", "Persona name to sync (e.g. sre-observer, security-auditor, finops-optimizer)")
 		destination = flag.String("dest", "/opt/data", "Destination path for agent runtime")
 		verifyOnly  = flag.Bool("verify", false, "Verify catalog integrity and exit")
+		serve       = flag.Bool("serve", false, "Start lightweight health check server on port 8080")
 	)
 	flag.Parse()
+
+	if *serve {
+		http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("OK\n"))
+		})
+		fmt.Println("Starting catalog service on :8080...")
+		if err := http.ListenAndServe(":8080", nil); err != nil {
+			fmt.Fprintf(os.Stderr, "Server failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	if *verifyOnly {
 		fmt.Printf("Verifying catalog at %s...\n", *catalogDir)
