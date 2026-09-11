@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
       - name: catalog-service
-        image: gcr.io/fbongiovanni-gke-dev/agent-skills-catalog:1789164574
+        image: ghcr.io/example/agent-skills-catalog:latest
         imagePullPolicy: IfNotPresent
         command: ["/skill-loader"]
         args: ["-catalog", "/catalog", "-serve"]

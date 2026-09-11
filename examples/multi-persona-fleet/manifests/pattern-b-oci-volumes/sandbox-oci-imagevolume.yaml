@@ -72,5 +72,5 @@ spec:
       # Native Kubernetes 1.31+ Image Volume
       - name: oci-skills-catalog
         image:
-          reference: gcr.io/fbongiovanni-gke-dev/agent-skills-catalog:1789164574
+          reference: ghcr.io/example/agent-skills-catalog:latest
           pullPolicy: IfNotPresent
