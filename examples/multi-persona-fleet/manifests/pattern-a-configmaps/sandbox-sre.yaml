@@ -1,0 +1,55 @@
+apiVersion: agents.x-k8s.io/v1beta1
+kind: Sandbox
+metadata:
+  name: agent-sandbox-sre
+  namespace: default
+  labels:
+    app.kubernetes.io/part-of: multi-persona-fleet
+    agent.x-k8s.io/persona: sre-observer
+spec:
+  podTemplate:
+    metadata:
+      labels:
+        app: agent-sandbox-sre
+        agent.x-k8s.io/persona: sre-observer
+    spec:
+      serviceAccountName: sandbox-sre
+      securityContext:
+        fsGroup: 1000
+      containers:
+      - name: hermes
+        image: nousresearch/hermes-agent:latest
+        args: ["gateway"]
+        env:
+        - name: HERMES_HOME
+          value: "/opt/data"
+        - name: HERMES_ALLOW_ROOT_GATEWAY
+          value: "1"
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef: {name: hermes-keys, key: GEMINI_API_KEY, optional: true}
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+        volumeMounts:
+        - name: agent-storage
+          mountPath: /opt/data
+        - name: persona-config
+          mountPath: /opt/data/persona.md
+          subPath: sre-observer.md
+        - name: skill-sre
+          mountPath: /opt/data/skills/custom/sre-cluster-health/SKILL.md
+          subPath: SKILL.md
+      volumes:
+      - name: agent-storage
+        emptyDir: {}
+      - name: persona-config
+        configMap:
+          name: fleet-personas
+      - name: skill-sre
+        configMap:
+          name: fleet-skills-sre

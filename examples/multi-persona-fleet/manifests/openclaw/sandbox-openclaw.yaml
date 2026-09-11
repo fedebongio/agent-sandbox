@@ -1,0 +1,61 @@
+apiVersion: agents.x-k8s.io/v1beta1
+kind: Sandbox
+metadata:
+  name: agent-sandbox-openclaw-security
+  namespace: default
+  labels:
+    app.kubernetes.io/part-of: multi-persona-fleet
+    agent.x-k8s.io/engine: openclaw
+    agent.x-k8s.io/persona: security-auditor
+spec:
+  podTemplate:
+    metadata:
+      labels:
+        app: agent-sandbox-openclaw-security
+        agent.x-k8s.io/engine: openclaw
+        agent.x-k8s.io/persona: security-auditor
+    spec:
+      serviceAccountName: sandbox-security
+      securityContext:
+        fsGroup: 1000
+      containers:
+      - name: openclaw
+        image: ghcr.io/openclaw/openclaw:latest
+        args: ["agent", "--config", "/workspace/openclaw.json"]
+        env:
+        - name: OPENCLAW_WORKSPACE
+          value: "/workspace"
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef: {name: hermes-keys, key: GEMINI_API_KEY, optional: true}
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+        volumeMounts:
+        - name: workspace-storage
+          mountPath: /workspace
+        - name: openclaw-config
+          mountPath: /workspace/openclaw.json
+          subPath: openclaw.json
+        - name: persona-config
+          mountPath: /workspace/persona.md
+          subPath: security-auditor.md
+        - name: skill-security
+          mountPath: /workspace/skills/security-rbac-posture/SKILL.md
+          subPath: SKILL.md
+      volumes:
+      - name: workspace-storage
+        emptyDir: {}
+      - name: openclaw-config
+        configMap:
+          name: openclaw-fleet-config
+      - name: persona-config
+        configMap:
+          name: fleet-personas
+      - name: skill-security
+        configMap:
+          name: fleet-skills-security

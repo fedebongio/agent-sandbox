@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openclaw-fleet-config
+  namespace: default
+  labels:
+    app.kubernetes.io/part-of: multi-persona-fleet
+    agent.x-k8s.io/engine: openclaw
+data:
+  openclaw.json: |
+    {
+      "version": "1.0",
+      "model": "gemini/gemini-3.5-flash",
+      "workspace": {
+        "root": "/workspace",
+        "skills_dir": "/workspace/skills",
+        "persona_file": "/workspace/persona.md",
+        "memory_dir": "/workspace/memory"
+      },
+      "execution": {
+        "sandbox_mode": true,
+        "max_turns": 40,
+        "timeout_seconds": 1800
+      },
+      "reporting": {
+        "output_format": "markdown",
+        "output_file": "/workspace/memory/observations.md"
+      }
+    }

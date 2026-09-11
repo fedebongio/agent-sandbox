@@ -1,0 +1,194 @@
+# Partitioned Warm Pools
+# Dedicated pools of pre-warmed sandboxes per persona, pre-configured with the appropriate
+# RBAC ServiceAccount, persona prompt, and skill set.
+# Includes demonstration of `operatingMode: Suspended` vs `Running` for cost-efficient pool management.
+apiVersion: agents.x-k8s.io/v1beta1
+kind: Sandbox
+metadata:
+  name: pool-sre-warm-0
+  namespace: default
+  labels:
+    app.kubernetes.io/part-of: multi-persona-fleet
+    agent.x-k8s.io/pool: sre-warm-pool
+    agent.x-k8s.io/persona: sre-observer
+    agent.x-k8s.io/status: idle
+spec:
+  operatingMode: Running
+  service: true
+  podTemplate:
+    metadata:
+      labels:
+        app: agent-sandbox-partitioned
+        agent.x-k8s.io/persona: sre-observer
+    spec:
+      serviceAccountName: sandbox-sre
+      securityContext:
+        fsGroup: 1000
+      containers:
+      - name: hermes
+        image: nousresearch/hermes-agent:latest
+        args: ["gateway"]
+        ports:
+        - containerPort: 8642
+          name: gateway-http
+        env:
+        - name: HERMES_HOME
+          value: "/opt/data"
+        - name: HERMES_ALLOW_ROOT_GATEWAY
+          value: "1"
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef: {name: hermes-keys, key: GEMINI_API_KEY, optional: true}
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+        volumeMounts:
+        - name: agent-storage
+          mountPath: /opt/data
+        - name: persona-config
+          mountPath: /opt/data/persona.md
+          subPath: sre-observer.md
+        - name: skill-sre
+          mountPath: /opt/data/skills/custom/sre-cluster-health/SKILL.md
+          subPath: SKILL.md
+      volumes:
+      - name: agent-storage
+        emptyDir: {}
+      - name: persona-config
+        configMap:
+          name: fleet-personas
+      - name: skill-sre
+        configMap:
+          name: fleet-skills-sre
+---
+apiVersion: agents.x-k8s.io/v1beta1
+kind: Sandbox
+metadata:
+  name: pool-security-warm-0
+  namespace: default
+  labels:
+    app.kubernetes.io/part-of: multi-persona-fleet
+    agent.x-k8s.io/pool: security-warm-pool
+    agent.x-k8s.io/persona: security-auditor
+    agent.x-k8s.io/status: idle
+spec:
+  operatingMode: Running
+  service: true
+  podTemplate:
+    metadata:
+      labels:
+        app: agent-sandbox-partitioned
+        agent.x-k8s.io/persona: security-auditor
+    spec:
+      serviceAccountName: sandbox-security
+      securityContext:
+        fsGroup: 1000
+      containers:
+      - name: hermes
+        image: nousresearch/hermes-agent:latest
+        args: ["gateway"]
+        ports:
+        - containerPort: 8642
+          name: gateway-http
+        env:
+        - name: HERMES_HOME
+          value: "/opt/data"
+        - name: HERMES_ALLOW_ROOT_GATEWAY
+          value: "1"
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef: {name: hermes-keys, key: GEMINI_API_KEY, optional: true}
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+        volumeMounts:
+        - name: agent-storage
+          mountPath: /opt/data
+        - name: persona-config
+          mountPath: /opt/data/persona.md
+          subPath: security-auditor.md
+        - name: skill-security
+          mountPath: /opt/data/skills/custom/security-rbac-posture/SKILL.md
+          subPath: SKILL.md
+      volumes:
+      - name: agent-storage
+        emptyDir: {}
+      - name: persona-config
+        configMap:
+          name: fleet-personas
+      - name: skill-security
+        configMap:
+          name: fleet-skills-security
+---
+# Example: Standby FinOps sandbox kept in `Suspended` mode during business hours.
+# When a batch cost audit is triggered, the controller flips operatingMode to `Running`.
+apiVersion: agents.x-k8s.io/v1beta1
+kind: Sandbox
+metadata:
+  name: pool-finops-standby-0
+  namespace: default
+  labels:
+    app.kubernetes.io/part-of: multi-persona-fleet
+    agent.x-k8s.io/pool: finops-warm-pool
+    agent.x-k8s.io/persona: finops-optimizer
+    agent.x-k8s.io/status: suspended
+spec:
+  operatingMode: Suspended
+  service: false
+  podTemplate:
+    metadata:
+      labels:
+        app: agent-sandbox-partitioned
+        agent.x-k8s.io/persona: finops-optimizer
+    spec:
+      serviceAccountName: sandbox-finops
+      securityContext:
+        fsGroup: 1000
+      containers:
+      - name: hermes
+        image: nousresearch/hermes-agent:latest
+        args: ["gateway"]
+        ports:
+        - containerPort: 8642
+          name: gateway-http
+        env:
+        - name: HERMES_HOME
+          value: "/opt/data"
+        - name: HERMES_ALLOW_ROOT_GATEWAY
+          value: "1"
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef: {name: hermes-keys, key: GEMINI_API_KEY, optional: true}
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+        volumeMounts:
+        - name: agent-storage
+          mountPath: /opt/data
+        - name: persona-config
+          mountPath: /opt/data/persona.md
+          subPath: finops-optimizer.md
+        - name: skill-finops
+          mountPath: /opt/data/skills/custom/finops-resource-waste/SKILL.md
+          subPath: SKILL.md
+      volumes:
+      - name: agent-storage
+        emptyDir: {}
+      - name: persona-config
+        configMap:
+          name: fleet-personas
+      - name: skill-finops
+        configMap:
+          name: fleet-skills-finops

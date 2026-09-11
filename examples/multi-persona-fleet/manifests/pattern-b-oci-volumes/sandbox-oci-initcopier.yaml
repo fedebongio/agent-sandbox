@@ -1,0 +1,73 @@
+# Pattern B (High Scale): Init Container Image Copier (Broad Compatibility)
+# Compatible with all Kubernetes versions (< 1.31 and 1.31+).
+# The skills catalog image is pulled once per node and cached by containerd.
+apiVersion: agents.x-k8s.io/v1beta1
+kind: Sandbox
+metadata:
+  name: agent-sandbox-initcopier-scale
+  namespace: default
+  labels:
+    app.kubernetes.io/part-of: multi-persona-fleet
+    agent.x-k8s.io/distribution: oci-init-copier
+spec:
+  podTemplate:
+    metadata:
+      labels:
+        app: agent-sandbox-initcopier-scale
+        agent.x-k8s.io/persona: sre-observer
+    spec:
+      serviceAccountName: sandbox-sre
+      securityContext:
+        fsGroup: 1000
+      initContainers:
+      - name: copy-skills-catalog
+        # Minimal image packaging the entire skill & persona catalog
+        image: gcr.io/fbongiovanni-gke-dev/agent-skills-catalog:latest
+        imagePullPolicy: IfNotPresent
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          echo "Syncing skills for persona: ${PERSONA_NAME}"
+          mkdir -p /opt/data/skills/custom
+          # Copy persona definition
+          if [ -f "/catalog/personas/${PERSONA_NAME}.md" ]; then
+            cp "/catalog/personas/${PERSONA_NAME}.md" /opt/data/persona.md
+          fi
+          # Copy persona-specific skills
+          if [ -d "/catalog/skills/sre" ]; then
+            cp -r /catalog/skills/sre/* /opt/data/skills/custom/
+          fi
+          echo "Skill synchronization complete."
+        env:
+        - name: PERSONA_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['agent.x-k8s.io/persona']
+        volumeMounts:
+        - name: agent-storage
+          mountPath: /opt/data
+      containers:
+      - name: hermes
+        image: nousresearch/hermes-agent:latest
+        args: ["gateway"]
+        env:
+        - name: HERMES_HOME
+          value: "/opt/data"
+        - name: HERMES_ALLOW_ROOT_GATEWAY
+          value: "1"
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef: {name: hermes-keys, key: GEMINI_API_KEY, optional: true}
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+        volumeMounts:
+        - name: agent-storage
+          mountPath: /opt/data
+      volumes:
+      - name: agent-storage
+        emptyDir: {}

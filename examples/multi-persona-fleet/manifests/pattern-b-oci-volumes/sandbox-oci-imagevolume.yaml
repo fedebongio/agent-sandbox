@@ -1,0 +1,76 @@
+# Pattern B (High Scale): Native OCI Image Volume (Kubernetes 1.31+)
+# Personas and skills are packaged as an OCI artifact/image in Artifact Registry.
+# Benefits at Scale (100s-1000s of sandboxes):
+#  1. Containerd caches layers on each node: 0 etcd watch load, 0 API server pressure.
+#  2. No 1 MiB ConfigMap limit: skills can bundle large documents, tools, and datasets.
+#  3. Instant startup: read-only layer overlay directly mounted by kubelet.
+apiVersion: agents.x-k8s.io/v1beta1
+kind: Sandbox
+metadata:
+  name: agent-sandbox-oci-scale
+  namespace: default
+  labels:
+    app.kubernetes.io/part-of: multi-persona-fleet
+    agent.x-k8s.io/distribution: oci-image-volume
+spec:
+  podTemplate:
+    metadata:
+      labels:
+        app: agent-sandbox-oci-scale
+        agent.x-k8s.io/persona: security-auditor
+    spec:
+      serviceAccountName: sandbox-security
+      securityContext:
+        fsGroup: 1000
+      initContainers:
+      - name: setup-persona
+        image: busybox:1.36
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          echo "Activating persona: ${PERSONA_NAME}"
+          mkdir -p /opt/data/skills/custom
+          # Link or copy selected persona and its relevant skills from the mounted OCI image
+          cp /opt/skills-catalog/personas/${PERSONA_NAME}.md /opt/data/persona.md
+          cp -r /opt/skills-catalog/skills/security/* /opt/data/skills/custom/
+        env:
+        - name: PERSONA_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['agent.x-k8s.io/persona']
+        volumeMounts:
+        - name: agent-storage
+          mountPath: /opt/data
+        - name: oci-skills-catalog
+          mountPath: /opt/skills-catalog
+          readOnly: true
+      containers:
+      - name: hermes
+        image: nousresearch/hermes-agent:latest
+        args: ["gateway"]
+        env:
+        - name: HERMES_HOME
+          value: "/opt/data"
+        - name: HERMES_ALLOW_ROOT_GATEWAY
+          value: "1"
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef: {name: hermes-keys, key: GEMINI_API_KEY, optional: true}
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+        volumeMounts:
+        - name: agent-storage
+          mountPath: /opt/data
+      volumes:
+      - name: agent-storage
+        emptyDir: {}
+      # Native Kubernetes 1.31+ Image Volume
+      - name: oci-skills-catalog
+        image:
+          reference: gcr.io/fbongiovanni-gke-dev/agent-skills-catalog:latest
+          pullPolicy: IfNotPresent

@@ -1,0 +1,118 @@
+# Generic Warm Pool Sandbox
+# Pre-warmed instances running the Hermes gateway (:8642) with full catalog access.
+# Persona and skills are injected dynamically Just-In-Time (JIT) when tasks are dispatched,
+# eliminating cold-start container launch latency and avoiding pod recreation.
+apiVersion: agents.x-k8s.io/v1beta1
+kind: Sandbox
+metadata:
+  name: agent-sandbox-warm-1
+  namespace: default
+  labels:
+    app.kubernetes.io/part-of: multi-persona-fleet
+    agent.x-k8s.io/pool: generic-warm-pool
+    agent.x-k8s.io/status: idle
+spec:
+  operatingMode: Running
+  service: true
+  podTemplate:
+    metadata:
+      labels:
+        app: agent-sandbox-warm-pool
+        agent.x-k8s.io/pool: generic-warm-pool
+        agent.x-k8s.io/instance: "warm-1"
+    spec:
+      serviceAccountName: sandbox-sre
+      securityContext:
+        fsGroup: 1000
+      containers:
+      - name: hermes
+        image: nousresearch/hermes-agent:latest
+        args: ["gateway"]
+        ports:
+        - containerPort: 8642
+          name: gateway-http
+        env:
+        - name: HERMES_HOME
+          value: "/opt/data"
+        - name: HERMES_ALLOW_ROOT_GATEWAY
+          value: "1"
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef: {name: hermes-keys, key: GEMINI_API_KEY, optional: true}
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+        volumeMounts:
+        - name: agent-storage
+          mountPath: /opt/data
+        # Shared skills catalog mounted read-only, ready for JIT selection
+        - name: skills-catalog
+          mountPath: /opt/skills-catalog
+          readOnly: true
+      volumes:
+      - name: agent-storage
+        emptyDir: {}
+      - name: skills-catalog
+        configMap:
+          name: fleet-personas
+---
+apiVersion: agents.x-k8s.io/v1beta1
+kind: Sandbox
+metadata:
+  name: agent-sandbox-warm-2
+  namespace: default
+  labels:
+    app.kubernetes.io/part-of: multi-persona-fleet
+    agent.x-k8s.io/pool: generic-warm-pool
+    agent.x-k8s.io/status: idle
+spec:
+  operatingMode: Running
+  service: true
+  podTemplate:
+    metadata:
+      labels:
+        app: agent-sandbox-warm-pool
+        agent.x-k8s.io/pool: generic-warm-pool
+        agent.x-k8s.io/instance: "warm-2"
+    spec:
+      serviceAccountName: sandbox-sre
+      securityContext:
+        fsGroup: 1000
+      containers:
+      - name: hermes
+        image: nousresearch/hermes-agent:latest
+        args: ["gateway"]
+        ports:
+        - containerPort: 8642
+          name: gateway-http
+        env:
+        - name: HERMES_HOME
+          value: "/opt/data"
+        - name: HERMES_ALLOW_ROOT_GATEWAY
+          value: "1"
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef: {name: hermes-keys, key: GEMINI_API_KEY, optional: true}
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+        volumeMounts:
+        - name: agent-storage
+          mountPath: /opt/data
+        - name: skills-catalog
+          mountPath: /opt/skills-catalog
+          readOnly: true
+      volumes:
+      - name: agent-storage
+        emptyDir: {}
+      - name: skills-catalog
+        configMap:
+          name: fleet-personas

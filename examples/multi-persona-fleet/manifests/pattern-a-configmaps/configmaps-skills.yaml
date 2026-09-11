@@ -1,0 +1,56 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fleet-skills-sre
+  namespace: default
+  labels:
+    app.kubernetes.io/part-of: multi-persona-fleet
+    agent.x-k8s.io/skill-category: sre
+data:
+  SKILL.md: |
+    ---
+    name: sre-cluster-health
+    description: "Inspect Kubernetes cluster health, identify unhealthy pods, crash loops, and ingress errors."
+    version: 1.0.0
+    ---
+    # Skill: SRE Cluster Health Inspection
+    Query pod statuses, warning events, and ingress backend statuses.
+    Record findings to /opt/data/learnings/observations.md under timestamped headings.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fleet-skills-security
+  namespace: default
+  labels:
+    app.kubernetes.io/part-of: multi-persona-fleet
+    agent.x-k8s.io/skill-category: security
+data:
+  SKILL.md: |
+    ---
+    name: security-rbac-posture
+    description: "Audit RBAC permissions, cluster-admin bindings, and privileged pod security contexts."
+    version: 1.0.0
+    ---
+    # Skill: Security RBAC and Posture Audit
+    Query ClusterRoleBindings for wildcard verbs and pods for privileged securityContexts.
+    Record prioritized findings to /opt/data/learnings/observations.md.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fleet-skills-finops
+  namespace: default
+  labels:
+    app.kubernetes.io/part-of: multi-persona-fleet
+    agent.x-k8s.io/skill-category: finops
+data:
+  SKILL.md: |
+    ---
+    name: finops-resource-waste
+    description: "Detect unrequested CPU/memory allocations and idle cloud resource waste."
+    version: 1.0.0
+    ---
+    # Skill: FinOps Resource Waste Detection
+    Audit containers missing requests/limits and identify over-provisioned capacities.
+    Record actionable right-sizing recommendations to /opt/data/learnings/observations.md.

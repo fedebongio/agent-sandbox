@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sandbox-finops
+  namespace: default
+  labels:
+    agent.x-k8s.io/persona: finops-optimizer
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: sandbox-finops-reader
+  labels:
+    agent.x-k8s.io/persona: finops-optimizer
+rules:
+# FinOps needs node capacities, workload requests/limits, storage allocations, and metrics
+- apiGroups: [""]
+  resources: ["nodes", "nodes/status", "pods", "persistentvolumeclaims", "persistentvolumes"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "statefulsets", "daemonsets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["metrics.k8s.io"]
+  resources: ["pods", "nodes"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: sandbox-finops-reader-binding
+  labels:
+    agent.x-k8s.io/persona: finops-optimizer
+subjects:
+- kind: ServiceAccount
+  name: sandbox-finops
+  namespace: default
+roleRef:
+  kind: ClusterRole
+  name: sandbox-finops-reader
+  apiGroup: rbac.authorization.k8s.io
