@@ -33,6 +33,7 @@ This directory contains examples of how to use the Agent Sandbox. Each subdirect
 - [**latebind-storage-gke-sandbox**](./latebind-storage-gke-sandbox): Late-binding persistent storage for sandboxes on GKE using the managed add-on APIs.
 - [**manual-pdb**](./manual-pdb): An example of manual PodDisruptionBudget (PDB) configuration for sandboxes.
 - [**mcp-server-sandbox**](./mcp-server-sandbox): Run an MCP (Model Context Protocol) server inside a Sandbox with attached storage.
+- [**multi-persona-warmpool**](./multi-persona-warmpool): Serve many agent personas from one warm pool — a claim's `additionalPodMetadata` label reaches the already-running pod through a downward API volume, so the persona changes with no restart, while `spec.env` silently forfeits the pool.
 - [**n8n-mcp**](./n8n-mcp): An example of connecting n8n workflows to sandboxes through the MCP server integration.
 - [**nono-sandbox**](./nono-sandbox): An example of running nono inside an Agent Sandbox, with fine-grained filesystem isolation, network filtering, credential brokering, and ephemeral per-tool micro-sandboxes.
 - [**nullclaw-sandbox**](./nullclaw-sandbox): An example of running Nullclaw, a minimal AI assistant runtime, inside the Agent Sandbox.

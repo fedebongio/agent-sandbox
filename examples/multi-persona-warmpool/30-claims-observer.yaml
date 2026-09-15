@@ -1,0 +1,60 @@
+# Copyright 2026 The Kubernetes Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# THREE DIFFERENT PERSONAS, ONE SHARED WARM POOL.
+#
+# Each claim is ~10 lines and differs from the others by a single label value.
+# All three adopt a pre-warmed spare from observer-pool; none cold-starts.
+#
+# Label rules worth knowing before you copy this:
+#   * The key MUST sit under the controller's label-domain allowlist
+#     (default: sandbox.users.io). A key like example.com/persona is rejected.
+#   * The key MUST NOT use agents.x-k8s.io/ or extensions.agents.x-k8s.io/ —
+#     those are system-reserved and are silently dropped on propagation.
+#   * The template MUST NOT already define the key (no-override rule).
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxClaim
+metadata:
+  name: agent-sre
+  namespace: multi-persona-demo
+spec:
+  warmPoolRef:
+    name: observer-pool
+  additionalPodMetadata:
+    labels:
+      sandbox.users.io/persona: sre-observer
+---
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxClaim
+metadata:
+  name: agent-security
+  namespace: multi-persona-demo
+spec:
+  warmPoolRef:
+    name: observer-pool
+  additionalPodMetadata:
+    labels:
+      sandbox.users.io/persona: security-auditor
+---
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxClaim
+metadata:
+  name: agent-finops
+  namespace: multi-persona-demo
+spec:
+  warmPoolRef:
+    name: observer-pool
+  additionalPodMetadata:
+    labels:
+      sandbox.users.io/persona: finops-optimizer

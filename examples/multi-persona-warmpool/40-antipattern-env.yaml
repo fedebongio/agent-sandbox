@@ -1,0 +1,101 @@
+# Copyright 2026 The Kubernetes Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# COUNTER-EXAMPLE — this file exists to be observed, not copied.
+#
+# spec.env is the obvious way to parameterise a persona per claim, and it is
+# the one thing that forfeits the warm pool.
+#
+# That bypass is DELIBERATE upstream design, not a bug. See KEP-0208
+# (docs/keps/208-mutually-exclusive-field-in-sandboxclaim/): "If the claim
+# sets spec.env or spec.volumeClaimTemplates, the controller will implicitly
+# bypass the warm pool and provision a Sandbox from scratch." In-band
+# post-adoption injection was considered and rejected on issue #1480.
+#
+# The check runs BEFORE the template policy is consulted:
+#
+#   // Implicit Cold Start Detection (Bypassing the Queue):
+#   if len(claim.Spec.Env) > 0 || len(claim.Spec.VolumeClaimTemplates) > 0 {
+#       return nil, nil   // -> cold path
+#   }
+#
+# What is worth demonstrating is the asymmetry in how that is REPORTED:
+#
+#   envVarsInjectionPolicy: Disallowed  -> claim REJECTED, never binds  (loud)
+#   envVarsInjectionPolicy: Allowed     -> claim SUCCEEDS, cold-starts  (SILENT)
+#
+# Under Allowed there is no error, no warning and no event. The claim goes
+# Ready, everything looks fine, and every request has quietly stopped using
+# the pool you are paying to keep warm. The only trace is the controller-set
+# label agents.x-k8s.io/launch-type=cold.
+#
+# The main templates in this example use Disallowed for exactly that reason.
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxTemplate
+metadata:
+  name: antipattern-pool
+  namespace: multi-persona-demo
+spec:
+  envVarsInjectionPolicy: Allowed # <-- deliberately wrong; see above
+  volumeClaimTemplatesPolicy: Disallowed
+  networkPolicyManagement: Unmanaged
+  podTemplate:
+    spec:
+      serviceAccountName: agent-observer
+      restartPolicy: OnFailure
+      securityContext:
+        runAsUser: 10000
+        runAsGroup: 10000
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: agent
+          image: busybox:1.36
+          command: ["/bin/sh", "-c", "sleep infinity"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxWarmPool
+metadata:
+  name: antipattern-pool
+  namespace: multi-persona-demo
+spec:
+  replicas: 2
+  sandboxTemplateRef:
+    name: antipattern-pool
+---
+# Two spares are sitting warm and ready. This claim will use NEITHER of them.
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxClaim
+metadata:
+  name: agent-env-antipattern
+  namespace: multi-persona-demo
+spec:
+  warmPoolRef:
+    name: antipattern-pool
+  env:
+    - name: PERSONA
+      value: sre-observer
